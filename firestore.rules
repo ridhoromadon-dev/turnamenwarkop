@@ -68,8 +68,8 @@ service cloud.firestore {
       return data.user_id is string && data.user_id == request.auth.uid &&
              data.username is string &&
              data.content is string && data.content.size() <= 1000 &&
-             data.rating is int && data.rating >= 1 && data.rating <= 5 &&
-             data.created_at is string;
+             (data.get('image_url', '') is string) &&
+             data.date_uploaded is string;
     }
 
     function isValidTask(data) {

@@ -892,7 +892,8 @@ function AuthView({ theme, config, onComplete, initialMode = 'login', sendReset 
           registration_date: new Date().toISOString(),
           total_wins: 0,
           role: 'USER',
-          isAdmin: false
+          isAdmin: false,
+          avatar_url: ''
         };
 
         await setDoc(doc(db, 'users', userRes.user.uid), userData);
@@ -1134,6 +1135,7 @@ function TestimonialsView({ theme, config, user }: { theme: ThemeType, config: T
         user_id: user.id,
         username: user.username,
         content: newContent,
+        image_url: user.avatarUrl || '',
         date_uploaded: new Date().toISOString()
       });
       setNewContent('');
@@ -1178,8 +1180,12 @@ function TestimonialsView({ theme, config, user }: { theme: ThemeType, config: T
             className={cn("p-6 rounded-2xl border shadow-sm", config.card)}
           >
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-slate-500/20 flex items-center justify-center">
-                <User className={cn("w-5 h-5", config.text)} />
+              <div className={cn("w-10 h-10 rounded-full flex items-center justify-center font-black text-white text-xs overflow-hidden", config.primary)}>
+                {t.imageUrl || (t as any).image_url ? (
+                  <img src={t.imageUrl || (t as any).image_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  (t.username || "A").charAt(0).toUpperCase()
+                )}
               </div>
               <div>
                 <p className={cn("font-bold text-sm", config.text)}>{t.username || "Anonim"}</p>
@@ -1243,7 +1249,7 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'notifications'), orderBy('created_at', 'desc'), limit(20));
+    const q = query(collection(db, 'notifications'), orderBy('created_at', 'desc'), limit(100));
     const unsub = onSnapshot(q, (snap) => {
       setNotifications(snap.docs.map(d => ({ 
         id: d.id, 
@@ -1255,6 +1261,19 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
     });
     return () => unsub();
   }, []);
+
+  const markAllAsRead = async () => {
+    const unread = notifications.filter(n => !n.read);
+    if (unread.length === 0) return;
+    setLoading(true);
+    try {
+      await Promise.all(unread.map(n => setDoc(doc(db, 'notifications', n.id), { read: true }, { merge: true })));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const markAsRead = async (id: string) => {
     try {
@@ -1817,6 +1836,14 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
                       <h3 className={cn("font-black text-2xl", config.text)}>System Notifications</h3>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
+                      {notifications.some(n => !n.read) && (
+                        <button 
+                          onClick={markAllAsRead}
+                          className={cn("px-4 py-2.5 rounded-xl border-2 border-sky-500/20 bg-sky-500/5 text-[10px] font-black uppercase tracking-widest hover:bg-sky-500/10 transition-all", config.accent)}
+                        >
+                          Tandai Semua Dibaca
+                        </button>
+                      )}
                       <div className="relative w-full max-w-xs">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
                         <input 
