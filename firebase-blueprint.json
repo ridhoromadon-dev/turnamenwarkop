@@ -78,6 +78,19 @@
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "message", "type", "read", "created_at"]
+    },
+    "RolePermissions": {
+      "title": "Role Permissions",
+      "description": "Granular permissions for a specific role",
+      "type": "object",
+      "properties": {
+        "canEditTheme": { "type": "boolean" },
+        "canManageTasks": { "type": "boolean" },
+        "canManageNotifications": { "type": "boolean" },
+        "canExportData": { "type": "boolean" },
+        "canEditWins": { "type": "boolean" },
+        "canManageUsers": { "type": "boolean" }
+      }
     }
   },
   "firestore": {
@@ -104,6 +117,10 @@
     "notifications": {
       "schema": "Notification",
       "description": "System notifications for admins"
+    },
+    "role_configs": {
+      "schema": "RolePermissions",
+      "description": "Granular permissions for roles"
     }
   }
 }

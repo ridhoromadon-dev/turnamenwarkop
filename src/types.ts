@@ -38,6 +38,16 @@ export enum UserRole {
   USER = 'USER'
 }
 
+export interface RolePermissions {
+  id: string; // Role name (e.g. 'MANAGER')
+  canEditTheme: boolean;
+  canManageTasks: boolean;
+  canManageNotifications: boolean;
+  canExportData: boolean;
+  canEditWins: boolean;
+  canManageUsers: boolean; // Only for Super Admin by default but configurable?
+}
+
 export interface UserProfile {
   id: string;
   username: string;

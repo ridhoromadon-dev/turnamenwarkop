@@ -1,12 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    
+    // 0. Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // --- GLOBAL HELPERS ---
+    
     function isSignedIn() {
       return request.auth != null;
     }
@@ -16,31 +18,26 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == role;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserData().isAdmin == true || getUserData().role in ["SUPER_ADMIN", "MANAGER", "STAFF"]);
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().get('role', 'USER') == role;
     }
 
     function isSuperAdmin() {
       return hasRole("SUPER_ADMIN");
     }
 
-    function isManager() {
-      return hasRole("MANAGER") || isSuperAdmin();
+    // Role hierarchy / Permission helper
+    function hasPermission(permission) {
+      let role = getUserData().get('role', 'USER');
+      return role == "SUPER_ADMIN" || (exists(/databases/$(database)/documents/role_configs/$(role)) && get(/databases/$(database)/documents/role_configs/$(role)).data.get(permission, false) == true);
     }
 
-    function isStaff() {
-      return hasRole("STAFF") || isManager();
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             (getUserData().get('isAdmin', false) == true || getUserData().get('role', 'USER') in ["SUPER_ADMIN", "MANAGER", "STAFF"]);
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -51,37 +48,32 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Validation helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
     function isValidUser(data) {
-      return data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
-             data.phone is string && data.phone.size() >= 8 && data.phone.size() <= 15 &&
-             data.team_name is string && data.team_name.size() >= 2 && data.team_name.size() <= 100 &&
+      return data.username is string && data.username.size() >= 3 && data.username.size() <= 64 &&
+             data.phone is string && data.phone.size() <= 32 &&
+             data.team_name is string && data.team_name.size() <= 64 &&
              data.registration_date is string &&
-             (data.get('avatar_url', '') is string) &&
-             (data.get('total_wins', 0) is int);
+             (data.get('total_wins', 0) is int) &&
+             (data.get('role', 'USER') is string) &&
+             (data.get('isAdmin', false) is bool);
     }
 
     function isValidTestimonial(data) {
       return data.user_id is string && data.user_id == request.auth.uid &&
+             data.username is string &&
              data.content is string && data.content.size() <= 1000 &&
-             data.date_uploaded is string;
-    }
-
-    function isValidSettings(data) {
-      return data.theme is string &&
-             data.poster_path is string &&
-             data.tournament_date is string;
-    }
-
-    function isValidCustomTheme(data) {
-      return data.name is string && data.name.size() <= 50 &&
-             data.bg is string && data.text is string && 
-             data.primary is string && data.card is string &&
-             data.navbar is string && data.accent is string;
+             data.rating is int && data.rating >= 1 && data.rating <= 5 &&
+             data.created_at is string;
     }
 
     function isValidTask(data) {
-      return data.title is string && data.title.size() <= 200 &&
+      return data.title is string && data.title.size() <= 256 &&
              data.completed is bool &&
              data.created_at is string;
     }
@@ -93,14 +85,35 @@ service cloud.firestore {
              data.created_at is string;
     }
 
+    function isValidRoleConfig(data) {
+      return data.canEditTheme is bool &&
+             data.canManageTasks is bool &&
+             data.canManageNotifications is bool &&
+             data.canExportData is bool &&
+             data.canEditWins is bool &&
+             data.canManageUsers is bool &&
+             data.id is string;
+    }
+
+    // --- RULES ---
+
+    // Rules for role configurations
+    match /role_configs/{roleId} {
+      allow read: if true;
+      allow write: if isSuperAdmin() && isValidRoleConfig(incoming());
+    }
+
     // Rules for users
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin(); // Restricted to admins for leaderboard/management
-      allow create: if isSignedIn() && isValidUser(incoming());
-      allow update: if (isOwner(userId) && (incoming().diff(existing()).affectedKeys().hasOnly(['username', 'phone', 'team_name', 'avatar_url']))) || 
-                    (isSuperAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'total_wins', 'isAdmin'])) ||
-                    (isManager() && incoming().diff(existing()).affectedKeys().hasOnly(['total_wins']));
+      allow read: if true; // Allow landing page stats, check status, and leaderboard
+      
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming()) &&
+                    incoming().get('role', 'USER') == 'USER' && incoming().get('isAdmin', false) == false;
+      
+      allow update: if (isOwner(userId) && (incoming().diff(existing()).affectedKeys().hasOnly(['username', 'phone', 'team_name', 'avatar_url', 'avatarUrl', 'teamName']))) || 
+                    (isSuperAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'total_wins', 'isAdmin', 'totalWins'])) ||
+                    (hasPermission('canEditWins') && incoming().diff(existing()).affectedKeys().hasOnly(['total_wins', 'totalWins']));
+      
       allow delete: if isSuperAdmin();
     }
 
@@ -108,35 +121,35 @@ service cloud.firestore {
     match /testimonials/{testId} {
       allow read: if true;
       allow create: if isSignedIn();
-      allow delete: if isManager() || (isSignedIn() && existing().user_id == request.auth.uid);
+      allow delete: if hasPermission('canManageNotifications') || isOwner(existing().user_id);
     }
 
     // Rules for settings
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isManager() || !exists(/databases/$(database)/documents/settings/current);
+      allow write: if hasPermission('canEditTheme') || !exists(/databases/$(database)/documents/settings/current);
     }
 
     // Rules for custom themes
     match /themes/{themeId} {
       allow read: if true;
-      allow write: if isManager() && isValidCustomTheme(incoming());
+      allow write: if hasPermission('canEditTheme');
     }
 
     // Rules for tasks
     match /tasks/{taskId} {
       allow read: if isAdmin();
-      allow write: if isStaff() && isValidTask(incoming());
-      allow delete: if isStaff();
+      allow create: if hasPermission('canManageTasks') && isValidTask(incoming());
+      allow update: if hasPermission('canManageTasks') && isValidTask(incoming());
+      allow delete: if hasPermission('canManageTasks');
     }
 
     // Rules for notifications
     match /notifications/{notifId} {
       allow read: if isAdmin();
-      allow write: if isStaff() && isValidNotification(incoming());
-      allow update: if isStaff() && (incoming().diff(existing()).affectedKeys().hasOnly(['read']) || isValidNotification(incoming()));
-      // Allow internal system write (which is also admin since it runs on the client)
       allow create: if isSignedIn() && isValidNotification(incoming());
+      allow update: if (hasPermission('canManageNotifications') && (incoming().diff(existing()).affectedKeys().hasOnly(['read']) || isValidNotification(incoming())));
+      allow delete: if hasPermission('canManageNotifications');
     }
   }
 }
