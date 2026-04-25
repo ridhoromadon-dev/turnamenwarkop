@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and registration data",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "phone": { "type": "string" },
+        "team_name": { "type": "string" },
+        "password": { "type": "string" },
+        "registration_date": { "type": "string", "format": "date-time" },
+        "isAdmin": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "MANAGER", "STAFF", "USER"] },
+        "avatar_url": { "type": "string" },
+        "total_wins": { "type": "integer" }
+      },
+      "required": ["username", "phone", "team_name", "password", "registration_date"]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "User testimonials",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "content": { "type": "string" },
+        "image_url": { "type": "string" },
+        "date_uploaded": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "content", "date_uploaded"]
+    },
+    "TournamentSettings": {
+      "title": "Tournament Settings",
+      "description": "Global settings for the tournament app",
+      "type": "object",
+      "properties": {
+        "theme": { "type": "string" },
+        "poster_path": { "type": "string" },
+        "tournament_date": { "type": "string", "format": "date-time" }
+      }
+    },
+    "CustomTheme": {
+      "title": "Custom Theme",
+      "description": "Admin defined custom theme styling",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "bg": { "type": "string" },
+        "text": { "type": "string" },
+        "primary": { "type": "string" },
+        "card": { "type": "string" },
+        "navbar": { "type": "string" },
+        "accent": { "type": "string" }
+      },
+      "required": ["name", "bg", "text", "primary", "card", "navbar", "accent"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Tournament management task",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "due_date": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "completed", "created_at"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System alerts for admins",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "warning"] },
+        "read": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "type", "read", "created_at"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Registered tournament users and administrators"
+    },
+    "testimonials": {
+      "schema": "Testimonial",
+      "description": "Testimonials from participants"
+    },
+    "settings": {
+      "schema": "TournamentSettings",
+      "description": "Configuration document for the application (usually single doc: 'current')"
+    },
+    "themes": {
+      "schema": "CustomTheme",
+      "description": "Collection of custom color themes defined by admin"
+    },
+    "tasks": {
+      "schema": "Task",
+      "description": "Admin tasks for tournament management"
+    },
+    "notifications": {
+      "schema": "Notification",
+      "description": "System notifications for admins"
+    }
+  }
+}

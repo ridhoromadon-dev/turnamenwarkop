@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserData().isAdmin == true || getUserData().role in ["SUPER_ADMIN", "MANAGER", "STAFF"]);
+    }
+
+    function isSuperAdmin() {
+      return hasRole("SUPER_ADMIN");
+    }
+
+    function isManager() {
+      return hasRole("MANAGER") || isSuperAdmin();
+    }
+
+    function isStaff() {
+      return hasRole("STAFF") || isManager();
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation helpers
+    function isValidUser(data) {
+      return data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
+             data.phone is string && data.phone.size() >= 8 && data.phone.size() <= 15 &&
+             data.team_name is string && data.team_name.size() >= 2 && data.team_name.size() <= 100 &&
+             data.registration_date is string &&
+             (data.get('avatar_url', '') is string) &&
+             (data.get('total_wins', 0) is int);
+    }
+
+    function isValidTestimonial(data) {
+      return data.user_id is string && data.user_id == request.auth.uid &&
+             data.content is string && data.content.size() <= 1000 &&
+             data.date_uploaded is string;
+    }
+
+    function isValidSettings(data) {
+      return data.theme is string &&
+             data.poster_path is string &&
+             data.tournament_date is string;
+    }
+
+    function isValidCustomTheme(data) {
+      return data.name is string && data.name.size() <= 50 &&
+             data.bg is string && data.text is string && 
+             data.primary is string && data.card is string &&
+             data.navbar is string && data.accent is string;
+    }
+
+    function isValidTask(data) {
+      return data.title is string && data.title.size() <= 200 &&
+             data.completed is bool &&
+             data.created_at is string;
+    }
+
+    function isValidNotification(data) {
+      return data.title is string && data.message is string &&
+             data.type in ["info", "success", "warning"] &&
+             data.read is bool &&
+             data.created_at is string;
+    }
+
+    // Rules for users
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin(); // Restricted to admins for leaderboard/management
+      allow create: if isSignedIn() && isValidUser(incoming());
+      allow update: if (isOwner(userId) && (incoming().diff(existing()).affectedKeys().hasOnly(['username', 'phone', 'team_name', 'avatar_url']))) || 
+                    (isSuperAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'total_wins', 'isAdmin'])) ||
+                    (isManager() && incoming().diff(existing()).affectedKeys().hasOnly(['total_wins']));
+      allow delete: if isSuperAdmin();
+    }
+
+    // Rules for testimonials
+    match /testimonials/{testId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow delete: if isManager() || (isSignedIn() && existing().user_id == request.auth.uid);
+    }
+
+    // Rules for settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isManager() || !exists(/databases/$(database)/documents/settings/current);
+    }
+
+    // Rules for custom themes
+    match /themes/{themeId} {
+      allow read: if true;
+      allow write: if isManager() && isValidCustomTheme(incoming());
+    }
+
+    // Rules for tasks
+    match /tasks/{taskId} {
+      allow read: if isAdmin();
+      allow write: if isStaff() && isValidTask(incoming());
+      allow delete: if isStaff();
+    }
+
+    // Rules for notifications
+    match /notifications/{notifId} {
+      allow read: if isAdmin();
+      allow write: if isStaff() && isValidNotification(incoming());
+      allow update: if isStaff() && (incoming().diff(existing()).affectedKeys().hasOnly(['read']) || isValidNotification(incoming()));
+      // Allow internal system write (which is also admin since it runs on the client)
+      allow create: if isSignedIn() && isValidNotification(incoming());
+    }
+  }
+}
