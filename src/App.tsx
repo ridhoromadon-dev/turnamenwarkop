@@ -38,7 +38,7 @@ import {
   createUserWithEmailAndPassword 
 } from 'firebase/auth';
 import { db, auth } from './lib/firebase';
-import { cn, DEFAULT_THEMES, handleFirestoreError } from './lib/utils';
+import { cn, DEFAULT_THEMES, handleFirestoreError, logAdminAction } from './lib/utils';
 import { 
   ThemeType, 
   UserProfile, 
@@ -49,7 +49,8 @@ import {
   ThemeConfig,
   Task,
   Notification,
-  RolePermissions
+  RolePermissions,
+  AdminLog
 } from './types';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -135,12 +136,20 @@ const Navbar = ({ theme, config, user, onLogout, setActiveView }: {
               </button>
             </div>
           ) : (
-            <button 
-              onClick={() => setActiveView('registration')}
-              className={cn("px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-xl hover:-translate-y-0.5 active:scale-95", config.primary, "text-white")}
-            >
-              Daftar
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setActiveView('login')}
+                className={cn("px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all", config.text, "hover:bg-slate-500/10")}
+              >
+                Masuk
+              </button>
+              <button 
+                onClick={() => setActiveView('registration')}
+                className={cn("px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl hover:-translate-y-0.5 active:scale-95", config.primary, "text-white")}
+              >
+                Daftar
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -478,6 +487,16 @@ const ProfileView = ({ theme, config, user, onUpdate }: {
   });
   const [avatarPreview, setAvatarPreview] = useState(user.avatarUrl || '');
 
+  useEffect(() => {
+    if (!editing) {
+      setAvatarPreview(user.avatarUrl || '');
+      setForm({
+        username: user.username,
+        teamName: user.teamName || (user as any).team_name || ''
+      });
+    }
+  }, [user, editing]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -520,7 +539,7 @@ const ProfileView = ({ theme, config, user, onUpdate }: {
       >
         <div className="relative z-10 flex flex-col md:flex-row gap-10 items-center md:items-start">
           <div className="relative group">
-            <div className={cn("w-32 h-32 rounded-3xl flex items-center justify-center text-5xl font-black text-white shadow-2xl overflow-hidden", config.primary)}>
+            <div className={cn("w-32 h-32 rounded-full flex items-center justify-center text-5xl font-black text-white shadow-2xl overflow-hidden border-4 border-white/10", config.primary)}>
               {avatarPreview ? (
                 <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
@@ -528,8 +547,11 @@ const ProfileView = ({ theme, config, user, onUpdate }: {
               )}
             </div>
             {editing && (
-              <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-3xl">
-                <ImageIcon className="w-8 h-8 text-white" />
+              <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer rounded-full">
+                <div className="flex flex-col items-center gap-1">
+                  <ImageIcon className="w-8 h-8 text-white" />
+                  <span className="text-[10px] font-black uppercase text-white tracking-widest">Ganti</span>
+                </div>
                 <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
               </label>
             )}
@@ -592,7 +614,11 @@ const ProfileView = ({ theme, config, user, onUpdate }: {
                     {loading ? "Menyimpan..." : "Simpan Perubahan"}
                   </button>
                   <button 
-                    onClick={() => { setEditing(false); setForm({ username: user.username, teamName: user.teamName || (user as any).team_name || '' }); }}
+                    onClick={() => { 
+                      setEditing(false); 
+                      setForm({ username: user.username, teamName: user.teamName || (user as any).team_name || '' }); 
+                      setAvatarPreview(user.avatarUrl || '');
+                    }}
                     className={cn("px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all", config.text, "border-slate-500/20")}
                   >
                     Batal
@@ -609,6 +635,26 @@ const ProfileView = ({ theme, config, user, onUpdate }: {
             </div>
           </div>
         </div>
+        
+        {editing && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 pt-8 border-t border-slate-500/10 space-y-4"
+          >
+            <div className="space-y-1">
+              <label className={cn("text-[10px] font-black uppercase tracking-widest opacity-40", config.text)}>Avatar URL (atau Upload Gambar)</label>
+              <div className="flex gap-4">
+                <input 
+                  className={cn("flex-1 p-3 rounded-xl border bg-transparent text-sm focus:ring-2 focus:ring-sky-500 outline-none", config.text, "border-slate-500/20")}
+                  value={avatarPreview}
+                  placeholder="https://..."
+                  onChange={e => setAvatarPreview(e.target.value)}
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
         <div className="absolute top-0 right-0 p-10 opacity-5">
           <User className="w-40 h-40" />
         </div>
@@ -716,6 +762,16 @@ export default function App() {
     setActiveView('home');
   };
 
+  const sendPasswordReset = async (email: string) => {
+    try {
+      const { sendPasswordResetEmail } = await import('firebase/auth');
+      await sendPasswordResetEmail(auth, email);
+      alert('Link reset password telah dikirim ke email Anda.');
+    } catch (err: any) {
+      alert('Gagal mengirim email reset: ' + err.message);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -752,7 +808,8 @@ export default function App() {
       <main>
         <AnimatePresence mode="wait">
           {activeView === 'home' && <HomeView key="home" theme={theme} config={config} settings={settings} setActiveView={setActiveView} />}
-          {activeView === 'registration' && <RegistrationView key="reg" theme={theme} config={config} onComplete={() => setActiveView('home')} />}
+          {activeView === 'registration' && <AuthView key="reg" theme={theme} config={config} onComplete={() => setActiveView('home')} initialMode="register" sendReset={sendPasswordReset} />}
+          {activeView === 'login' && <AuthView key="login" theme={theme} config={config} onComplete={() => setActiveView('home')} initialMode="login" sendReset={sendPasswordReset} />}
           {activeView === 'check-status' && <CheckStatusView key="check" theme={theme} config={config} />}
           {activeView === 'testimonials' && <TestimonialsView key="test" theme={theme} config={config} user={user} />}
           {activeView === 'profile' && user && <ProfileView key="profile" theme={theme} config={config} user={user} onUpdate={(updated) => setUser(updated)} />}
@@ -802,8 +859,16 @@ function Footer({ theme, config }: { theme: ThemeType, config: ThemeConfig }) {
 
 // --- Form Views (Mini components within the same file for simplicity or split if needed) ---
 
-function RegistrationView({ theme, config, onComplete }: { theme: ThemeType, config: ThemeConfig, onComplete: () => void, key?: React.Key }) {
-  const [form, setForm] = useState({ phone: '', username: '', teamName: '', password: '' });
+function AuthView({ theme, config, onComplete, initialMode = 'login', sendReset }: { 
+  theme: ThemeType, 
+  config: ThemeConfig, 
+  onComplete: () => void, 
+  initialMode?: 'login' | 'register' | 'forgot',
+  sendReset: (email: string) => Promise<void>,
+  key?: React.Key 
+}) {
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
+  const [form, setForm] = useState({ phone: '', username: '', teamName: '', password: '', email: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -813,33 +878,42 @@ function RegistrationView({ theme, config, onComplete }: { theme: ThemeType, con
     setError('');
     
     try {
-      // For simplicity in this demo, we'll use email as username@tournament.com
-      const email = `${form.username.replace(/\s+/g, '').toLowerCase()}@tournament.com`;
-      const userRes = await createUserWithEmailAndPassword(auth, email, form.password);
-      
-      const userData = {
-        username: form.username,
-        phone: form.phone,
-        team_name: form.teamName,
-        registration_date: new Date().toISOString(),
-        total_wins: 0,
-        role: 'USER',
-        isAdmin: false
-      };
+      if (mode === 'forgot') {
+        await sendReset(form.email);
+        setMode('login');
+      } else if (mode === 'register') {
+        const email = `${form.username.replace(/\s+/g, '').toLowerCase()}@tournament.com`;
+        const userRes = await createUserWithEmailAndPassword(auth, email, form.password);
+        
+        const userData = {
+          username: form.username,
+          phone: form.phone,
+          team_name: form.teamName,
+          registration_date: new Date().toISOString(),
+          total_wins: 0,
+          role: 'USER',
+          isAdmin: false
+        };
 
-      await setDoc(doc(db, 'users', userRes.user.uid), userData);
-      
-      // Trigger notification for admin
-      await addDoc(collection(db, 'notifications'), {
-        title: 'Pendaftaran Baru',
-        message: `User ${form.username} baru saja mendaftar.`,
-        type: 'success',
-        read: false,
-        created_at: new Date().toISOString()
-      });
+        await setDoc(doc(db, 'users', userRes.user.uid), userData);
+        
+        await addDoc(collection(db, 'notifications'), {
+          title: 'Pendaftaran Baru',
+          message: `User ${form.username} baru saja mendaftar.`,
+          type: 'success',
+          read: false,
+          created_at: new Date().toISOString()
+        });
 
-      alert(`Pendaftaran Berhasil! ID Anda: ${userRes.user.uid}`);
-      onComplete();
+        alert(`Pendaftaran Berhasil! ID Anda: ${userRes.user.uid}`);
+        onComplete();
+      } else {
+        // Login mode
+        // For simplicity, we assume username as email
+        const email = form.username.includes('@') ? form.username : `${form.username.replace(/\s+/g, '').toLowerCase()}@tournament.com`;
+        await signInWithEmailAndPassword(auth, email, form.password);
+        onComplete();
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -854,59 +928,111 @@ function RegistrationView({ theme, config, onComplete }: { theme: ThemeType, con
       className="pt-32 pb-20 px-4 flex justify-center"
     >
       <div className={cn("w-full max-w-md p-8 rounded-3xl border shadow-2xl", config.card)}>
-        <h2 className={cn("text-3xl font-black mb-6", config.text)}>Pendaftaran</h2>
+        <h2 className={cn("text-3xl font-black mb-6", config.text)}>
+          {mode === 'login' ? 'Masuk' : mode === 'register' ? 'Pendaftaran' : 'Lupa Password'}
+        </h2>
+        
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Nomor Telepon</label>
-            <input 
-              required
-              type="tel"
-              className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
-              placeholder="0812..."
-              value={form.phone}
-              onChange={e => setForm({...form, phone: e.target.value})}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Username</label>
-            <input 
-              required
-              className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
-              placeholder="Jawara_Esport"
-              value={form.username}
-              onChange={e => setForm({...form, username: e.target.value})}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Nama Tim</label>
-            <input 
-              required
-              className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
-              placeholder="Garuda Muda"
-              value={form.teamName}
-              onChange={e => setForm({...form, teamName: e.target.value})}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Password</label>
-            <input 
-              required
-              type="password"
-              className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
-              placeholder="••••••••"
-              value={form.password}
-              onChange={e => setForm({...form, password: e.target.value})}
-            />
-          </div>
+          {mode === 'forgot' ? (
+            <div className="space-y-1">
+              <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Email Terdaftar</label>
+              <input 
+                required
+                type="email"
+                className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
+                placeholder="email@contoh.com"
+                value={form.email}
+                onChange={e => setForm({...form, email: e.target.value})}
+              />
+            </div>
+          ) : (
+            <>
+              {mode === 'register' && (
+                <div className="space-y-1">
+                  <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Nomor Telepon</label>
+                  <input 
+                    required
+                    type="tel"
+                    className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
+                    placeholder="0812..."
+                    value={form.phone}
+                    onChange={e => setForm({...form, phone: e.target.value})}
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Username</label>
+                <input 
+                  required
+                  className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
+                  placeholder="Jawara_Esport"
+                  value={form.username}
+                  onChange={e => setForm({...form, username: e.target.value})}
+                />
+              </div>
+              {mode === 'register' && (
+                <div className="space-y-1">
+                  <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Nama Tim</label>
+                  <input 
+                    required
+                    className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
+                    placeholder="Garuda Muda"
+                    value={form.teamName}
+                    onChange={e => setForm({...form, teamName: e.target.value})}
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className={cn("text-xs font-bold uppercase tracking-widest opacity-50", config.text)}>Password</label>
+                <input 
+                  required
+                  type="password"
+                  className={cn("w-full p-4 rounded-xl border bg-transparent outline-none focus:ring-2 focus:ring-blue-500", config.text, config.card)}
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={e => setForm({...form, password: e.target.value})}
+                />
+              </div>
+            </>
+          )}
+
           {error && <p className="text-red-500 text-xs font-bold">{error}</p>}
+          
           <button 
             disabled={loading}
             type="submit"
             className={cn("w-full py-4 rounded-xl font-black transition-all shadow-lg mt-4", config.primary, "text-white", loading && "opacity-50")}
           >
-            {loading ? "Memproses..." : "Daftar"}
+            {loading ? "Memproses..." : mode === 'login' ? 'Masuk' : mode === 'register' ? 'Daftar' : 'Kirim Link Reset'}
           </button>
         </form>
+
+        <div className="mt-6 flex flex-col gap-2 text-center text-xs">
+          {mode === 'login' && (
+            <>
+              <button 
+                onClick={() => setMode('register')}
+                className={cn("font-bold hover:underline", config.accent)}
+              >
+                Belum punya akun? Daftar di sini
+              </button>
+              <button 
+                onClick={() => setMode('forgot')}
+                className="opacity-50 hover:opacity-100"
+              >
+                Lupa password?
+              </button>
+            </>
+          )}
+          {(mode === 'register' || mode === 'forgot') && (
+            <button 
+              onClick={() => setMode('login')}
+              className={cn("font-bold hover:underline", config.accent)}
+            >
+              Kembali ke Login
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -1079,7 +1205,12 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
   const [notifSearchTerm, setNotifSearchTerm] = useState('');
   const [notifTypeFilter, setNotifTypeFilter] = useState<'all' | 'info' | 'success' | 'warning'>('all');
   const [notifStatusFilter, setNotifStatusFilter] = useState<'all' | 'unread' | 'read'>('all');
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'roles' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'roles' | 'notifications' | 'logs'>('overview');
+  const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
+
+  // Password Reset state
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
 
   // Role permissions dynamic helper
   const hasPermission = (permission: keyof RolePermissions) => {
@@ -1159,6 +1290,12 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
         posterPath: testUrl,
         tournamentDate: new Date(testDate).toISOString()
       });
+      await logAdminAction(
+        currentUser.username, 
+        'UPDATE_SETTINGS', 
+        `Updated settings: Theme=${newTheme || settings.theme}, Date=${testDate}`,
+        'settings/current'
+      );
       alert('Pengaturan diperbarui');
     } catch (err: any) {
       alert('Gagal memperbarui: ' + err.message);
@@ -1173,8 +1310,10 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
     try {
       if (editingTheme.id) {
         await setDoc(doc(db, 'themes', editingTheme.id), editingTheme);
+        await logAdminAction(currentUser.username, 'UPDATE_THEME', `Updated custom theme: ${editingTheme.name}`, editingTheme.id);
       } else {
-        await addDoc(collection(db, 'themes'), editingTheme);
+        const res = await addDoc(collection(db, 'themes'), editingTheme);
+        await logAdminAction(currentUser.username, 'CREATE_THEME', `Created custom theme: ${editingTheme.name}`, res.id);
       }
       setIsThemeEditorOpen(false);
       setEditingTheme({ name: '', bg: 'bg-[#0f172a]', text: 'text-slate-50', primary: 'bg-sky-600', card: 'bg-slate-800/40', navbar: 'bg-slate-900', accent: 'text-sky-400' });
@@ -1189,6 +1328,7 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
     if (!confirm('Hapus tema ini?')) return;
     try {
       await deleteDoc(doc(db, 'themes', id));
+      await logAdminAction(currentUser.username, 'DELETE_THEME', `Theme ID ${id} deleted`, id);
     } catch (err) {
       alert('Gagal hapus');
     }
@@ -1263,12 +1403,16 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
   const deleteTask = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'tasks', id));
+      const task = tasks.find(t => t.id === id);
+      await logAdminAction(currentUser.username, 'DELETE_TASK', `Task deleted: ${task?.title || id}`, id);
     } catch (e) { alert('Gagal hapus tugas'); }
   };
 
   const updateWins = async (uid: string, wins: number) => {
     try {
       await setDoc(doc(db, 'users', uid), { total_wins: wins }, { merge: true });
+      const user = users.find(u => u.id === uid);
+      await logAdminAction(currentUser.username, 'UPDATE_WINS', `Updated wins for ${user?.username || uid} to ${wins}`, uid);
       setUsers(users.map(u => u.id === uid ? { ...u, totalWins: wins } : u));
     } catch (e) { alert('Gagal update points'); }
   };
@@ -1286,6 +1430,7 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
         isAdmin: ['SUPER_ADMIN', 'MANAGER', 'STAFF'].includes(role) 
       }, { merge: true });
       alert(`Role user diperbarui menjadi ${role}`);
+      await logAdminAction(currentUser.username, 'UPDATE_USER_ROLE', `Role for ${uid} set to ${role}`, uid);
       setUsers(users.map(u => u.id === uid ? { ...u, role: role as any, isAdmin: ['SUPER_ADMIN', 'MANAGER', 'STAFF'].includes(role) } : u));
     } catch (err: any) {
       alert('Gagal: ' + err.message);
@@ -1297,6 +1442,8 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
     if (!confirm('Hapus user ini?')) return;
     try {
       await deleteDoc(doc(db, 'users', uid));
+      const user = users.find(u => u.id === uid);
+      await logAdminAction(currentUser.username, 'DELETE_USER', `User deleted: ${user?.username || uid}`, uid);
       setUsers(users.filter(u => u.id !== uid));
       alert('User berhasil dihapus');
     } catch (err: any) {
@@ -1322,6 +1469,7 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
             { id: 'users', label: 'Users', icon: Users },
             { id: 'roles', label: 'Roles', icon: ShieldCheck },
             { id: 'notifications', label: 'Notifications', icon: Bell },
+            { id: 'logs', label: 'System Logs', icon: Download },
           ].map(tab => {
             const unreadCount = tab.id === 'notifications' ? notifications.filter(n => !n.read).length : 0;
             return (
@@ -1619,8 +1767,47 @@ function AdminDashboardView({ theme, config, user: currentUser, settings, custom
           </>
         )}
 
-        {(activeTab === 'users' || activeTab === 'roles' || activeTab === 'notifications') && (
+        {(activeTab === 'users' || activeTab === 'roles' || activeTab === 'notifications' || activeTab === 'logs') && (
           <div className={cn("md:col-span-3 p-8 rounded-3xl border shadow-xl space-y-8", config.card)}>
+            {activeTab === 'logs' && (
+              <div className="space-y-6 text-sm">
+                <div className="flex items-center gap-3">
+                  <Download className={cn("w-6 h-6", config.accent)} />
+                  <h3 className={cn("font-black text-2xl", config.text)}>Audit Logs</h3>
+                </div>
+                <div className="overflow-x-auto border rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-500/5">
+                      <tr>
+                        <th className="px-4 py-3 opacity-50 uppercase font-black">Timestamp</th>
+                        <th className="px-4 py-3 opacity-50 uppercase font-black">Admin</th>
+                        <th className="px-4 py-3 opacity-50 uppercase font-black">Action</th>
+                        <th className="px-4 py-3 opacity-50 uppercase font-black">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-500/10">
+                      {adminLogs.map(log => (
+                        <tr key={log.id} className="hover:bg-slate-500/5 transition-colors">
+                          <td className="px-4 py-3 opacity-60 font-mono">
+                            {new Date(log.timestamp).toLocaleString('id-ID', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                          </td>
+                          <td className="px-4 py-3 font-bold">{log.username}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-500 font-bold uppercase text-[10px] shadow-sm">{log.action}</span>
+                          </td>
+                          <td className="px-4 py-3 opacity-80">{log.details}</td>
+                        </tr>
+                      ))}
+                      {adminLogs.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-12 text-center opacity-40 italic">Belum ada riwayat aktivitas admin.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {activeTab === 'notifications' && (
               <div className="space-y-6">
                 <div className="flex flex-col gap-6">

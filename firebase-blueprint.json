@@ -91,6 +91,20 @@
         "canEditWins": { "type": "boolean" },
         "canManageUsers": { "type": "boolean" }
       }
+    },
+    "AdminLog": {
+      "title": "Admin Audit Log",
+      "description": "Record of administrative actions for audit purposes",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "targetId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "username", "action", "details", "timestamp"]
     }
   },
   "firestore": {
@@ -121,6 +135,10 @@
     "role_configs": {
       "schema": "RolePermissions",
       "description": "Granular permissions for roles"
+    },
+    "admin_logs": {
+      "schema": "AdminLog",
+      "description": "Administrative audit logs"
     }
   }
 }

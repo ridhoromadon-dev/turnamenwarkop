@@ -69,6 +69,16 @@ export interface Testimonial {
   username?: string;
 }
 
+export interface AdminLog {
+  id: string;
+  userId: string;
+  username: string;
+  action: string;
+  details: string;
+  targetId?: string;
+  timestamp: string;
+}
+
 export interface TournamentSettings {
   theme: ThemeType;
   posterPath: string;

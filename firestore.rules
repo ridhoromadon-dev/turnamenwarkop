@@ -95,12 +95,27 @@ service cloud.firestore {
              data.id is string;
     }
 
+    function isValidAdminLog(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.username is string && data.username.size() <= 128 &&
+             data.action is string && data.action.size() <= 64 &&
+             data.details is string && data.details.size() <= 1000 &&
+             data.timestamp is string;
+    }
+
     // --- RULES ---
 
     // Rules for role configurations
     match /role_configs/{roleId} {
       allow read: if true;
       allow write: if isSuperAdmin() && isValidRoleConfig(incoming());
+    }
+
+    // Rules for admin logs
+    match /admin_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && isValidAdminLog(incoming());
+      allow update, delete: if false;
     }
 
     // Rules for users

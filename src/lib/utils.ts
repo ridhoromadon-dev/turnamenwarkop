@@ -1,10 +1,27 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { collection, addDoc } from "firebase/firestore";
 import { OperationType, type FirestoreErrorInfo, ThemeConfig } from "../types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export async function logAdminAction(username: string, action: string, details: string, targetId?: string) {
+  if (!auth.currentUser) return;
+  try {
+    await addDoc(collection(db, "admin_logs"), {
+      userId: auth.currentUser.uid,
+      username,
+      action,
+      details,
+      targetId: targetId || "",
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Failed to log admin action:", error);
+  }
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
